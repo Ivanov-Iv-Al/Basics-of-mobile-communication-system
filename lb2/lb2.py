@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
+from matplotlib.colors import LinearSegmentedColormap
 
 # 1. ИСХОДНЫЕ ПАРАМЕТРЫ СИСТЕМЫ
 
@@ -29,14 +30,17 @@ SINR_UL = 4  # дБ, минимальный SINR для UL
 MIMOGain = 3  # дБ, усиление MIMO
 FeederLoss = 2.9  # дБ, потери в фидерном тракте (2 + 0.5 + 0.4)
 
-# Параметры для модели распространения COST231
+# Параметры для модели распространения
 h_BS = 30  # м, высота антенны БС
 h_UE = 1.5  # м, высота антенны UE
 area_type = 'U'  # тип местности: 'U' - город
 
-# Площади покрытия
-Area_open_territory_km2 = 100  # км², площадь открытой территории (макросоты)
-Area_indoor_km2 = 4  # км², площадь помещений (микросоты)
+# Параметры для Walfish-Ikegami
+h_roof = 20  # м, средняя высота крыш зданий
+w_street = 20  # м, ширина улиц
+phi = 90  # градусов, угол между направлением связи и осью улицы
+b = 30  # м, расстояние между зданиями
+
 
 # 2. РАСЧЕТ RxSens (ЧУВСТВИТЕЛЬНОСТИ ПРИЕМНИКА)
 
@@ -45,19 +49,11 @@ def calculate_rx_sens(noise_figure_dB, bandwidth_Hz, required_sinr_dB):
     rx_sens_dBm = noise_figure_dB + thermal_noise_dBm + required_sinr_dB  # дБм
     return rx_sens_dBm, thermal_noise_dBm
 
-RxSens_BS_dBm, thermal_UL = calculate_rx_sens(NF_BS, BW_UL_Hz, SINR_UL)  # дБм
 
+RxSens_BS_dBm, thermal_UL = calculate_rx_sens(NF_BS, BW_UL_Hz, SINR_UL)  # дБм
 RxSens_UE_dBm, thermal_DL = calculate_rx_sens(NF_UE, BW_DL_Hz, SINR_DL)  # дБм
 
-print("РАСЧЕТ ЧУВСТВИТЕЛЬНОСТИ ПРИЕМНИКА")
-
-print(f"Тепловой шум (UL, 10 МГц): {thermal_UL:.2f} дБм")
-print(f"Тепловой шум (DL, 20 МГц): {thermal_DL:.2f} дБм")
-print(f"Чувствительность БС (RxSens_UL): {RxSens_BS_dBm:.2f} дБм")
-print(f"Чувствительность UE (RxSens_DL): {RxSens_UE_dBm:.2f} дБм")
-
 # 3. РАСЧЕТ MAPL (МАКСИМАЛЬНО ДОПУСТИМЫХ ПОТЕРЬ)
-
 
 MAPL_DL = (TxPowerBS - FeederLoss + AntGainBS + MIMOGain -
            IM - PenetrationM) - RxSens_UE_dBm  # дБ
@@ -66,11 +62,6 @@ MAPL_UL = (TxPowerUE - FeederLoss + AntGainBS + MIMOGain -
            IM - PenetrationM) - RxSens_BS_dBm  # дБ
 
 
-print("РАСЧЕТ МАКСИМАЛЬНО ДОПУСТИМЫХ ПОТЕРЬ (MAPL)")
-
-print(f"MAPL для нисходящего канала (DL): {MAPL_DL:.2f} дБ")
-print(f"MAPL для восходящего канала (UL): {MAPL_UL:.2f} дБ")
-
 # 4. МОДЕЛИ РАСПРОСТРАНЕНИЯ СИГНАЛА
 
 def path_loss_fspl(d_km, f_GHz):
@@ -78,9 +69,11 @@ def path_loss_fspl(d_km, f_GHz):
     pl_dB = 20 * np.log10((4 * np.pi * d_m * f_GHz * 1e9) / 3e8)  # дБ
     return pl_dB
 
+
 def path_loss_umi_nlos(d_m, f_GHz):
     pl_dB = 26 * np.log10(f_GHz) + 22.7 + 36.7 * np.log10(d_m)  # дБ
     return pl_dB
+
 
 def path_loss_cost231_hata(d_km, f_MHz, h_BS, h_UE, area_type):
     if 150 <= f_MHz <= 1500:
@@ -115,121 +108,155 @@ def path_loss_cost231_hata(d_km, f_MHz, h_BS, h_UE, area_type):
              s * np.log10(d_km) + L_clutter)  # дБ
     return pl_dB
 
+
+def path_loss_walfish_ikegami(d_km, f_MHz, h_BS, h_UE, h_roof, w_street=20, phi=90, b=30):
+    """
+    Модель Walfish-Ikegami для городской среды
+    """
+    d_m = d_km * 1000
+    f = f_MHz
+
+    # Свободное пространство
+    L0 = 32.4 + 20 * np.log10(d_m) + 20 * np.log10(f)
+
+    # Параметры для NLOS
+    if phi <= 35:
+        Lori = 0
+    elif phi <= 55:
+        Lori = 2.5 + 0.075 * (phi - 35)
+    else:
+        Lori = 4.0 - 0.114 * (phi - 55)
+
+    Lrts = -16.9 - 10 * np.log10(w_street) + 10 * np.log10(f) + \
+           20 * np.log10(h_roof - h_UE) + Lori
+
+    if h_BS > h_roof:
+        Lbsh = 0
+        ka = 54
+        kd = 18
+    else:
+        Lbsh = -18 * np.log10(1 + (h_BS - h_roof))
+        if d_m >= 500:
+            ka = 54 - 0.8 * (h_BS - h_roof)
+        else:
+            ka = 54 - 1.6 * (h_BS - h_roof) * d_m / 1000
+        kd = 18 - 15 * (h_BS - h_roof) / h_roof
+
+    if f >= 1500:
+        kf = -4 + 0.7 * (f / 925 - 1)
+    else:
+        kf = -4 + 1.5 * (f / 925 - 1)
+
+    Lmsd = Lbsh + ka + kd * np.log10(d_m) + kf * np.log10(f) - 9 * np.log10(b)
+
+    if h_BS > h_roof and d_m > 500:
+        L = L0
+    else:
+        L = L0 + Lrts + Lmsd
+
+    return L
+
+
+# Расчет потерь
 d_km_array = np.linspace(0.01, 10, 500)
 d_m_array = d_km_array * 1000
 
 pl_fspl = path_loss_fspl(d_km_array, f_GHz)
 pl_umi = path_loss_umi_nlos(d_m_array, f_GHz)
-pl_cost231 = np.array([path_loss_cost231_hata(d, f_MHz, h_BS, h_UE, area_type) for d in d_km_array])  # дБ
+pl_cost231 = np.array([path_loss_cost231_hata(d, f_MHz, h_BS, h_UE, area_type) for d in d_km_array])
+pl_walfish = np.array([path_loss_walfish_ikegami(d, f_MHz, h_BS, h_UE, h_roof, w_street, phi, b) for d in d_km_array])
 
-print("МОДЕЛИ РАСПРОСТРАНЕНИЯ СИГНАЛА РАССЧИТАНЫ")
-
-# 5. ПОСТРОЕНИЕ ГРАФИКОВ ЗАВИСИМОСТИ PL(d)
+# 5. ПОСТРОЕНИЕ ГРАФИКА С ДОБАВЛЕНИЕМ WALFISH-IKEGAMI
 
 plt.figure(figsize=(12, 8))
 plt.plot(d_km_array, pl_fspl, 'g--', label='Free Space (FSPL)', linewidth=1.5)
 plt.plot(d_km_array, pl_umi, 'b-', label=f'UMiNLOS (f={f_GHz}ГГц)', linewidth=2)
 plt.plot(d_km_array, pl_cost231, 'r-', label=f'COST 231 Hata (Urban, hBS={h_BS}м)', linewidth=2)
+plt.plot(d_km_array, pl_walfish, 'm-', label=f'Walfish-Ikegami (h_roof={h_roof}м)', linewidth=2)
 
 plt.axhline(y=MAPL_DL, color='orange', linestyle=':', linewidth=2.5, label=f'MAPL_DL = {MAPL_DL:.1f} дБ')
 plt.axhline(y=MAPL_UL, color='purple', linestyle=':', linewidth=2.5, label=f'MAPL_UL = {MAPL_UL:.1f} дБ')
 
 plt.xlabel('Расстояние, d (км)')
 plt.ylabel('Потери сигнала, PL (дБ)')
-plt.title('Зависимость потерь сигнала от расстояния для разных моделей')
+plt.title('Зависимость потерь сигнала от расстояния для разных моделей (с Walfish-Ikegami)')
 plt.grid(True, which="both", ls="--", alpha=0.5)
 plt.legend()
 plt.ylim(60, 180)
 plt.xlim(0, 10)
-plt.savefig('path_loss_models.png', dpi=300, bbox_inches='tight')
+plt.savefig('path_loss_models_with_walfish.png', dpi=300, bbox_inches='tight')
 plt.show()
 
-print("\nГрафик зависимостей построен и сохранен как 'path_loss_models.png'")
+print("График с моделью Walfish-Ikegami сохранен как 'path_loss_models_with_walfish.png'")
 
-# 6. ОПРЕДЕЛЕНИЕ РАДИУСА СОТЫ
+# 6. ТЕПЛОВАЯ КАРТА РАСПРОСТРАНЕНИЯ СИГНАЛА ДЛЯ WALFISH-IKEGAMI
 
+# Создаем сетку для тепловой карты
+x = np.linspace(-5, 5, 200)  # км по оси X
+y = np.linspace(-5, 5, 200)  # км по оси Y
+X, Y = np.meshgrid(x, y)
+
+# Расстояние от центра (базовой станции)
+R = np.sqrt(X ** 2 + Y ** 2)
+
+# Рассчитываем мощность сигнала для каждой точки
+signal_strength = np.zeros_like(R)
+for i in range(len(x)):
+    for j in range(len(y)):
+        distance_km = R[j, i]
+        if distance_km > 0:
+            pl = path_loss_walfish_ikegami(distance_km, f_MHz, h_BS, h_UE, h_roof, w_street, phi, b)
+            rx_power = TxPowerBS - pl - FeederLoss + AntGainBS + MIMOGain - PenetrationM
+            signal_strength[j, i] = rx_power
+        else:
+            signal_strength[j, i] = TxPowerBS
+
+
+# Находим радиус покрытия для Walfish-Ikegami
 def find_radius(map_loss, distance_array, loss_array):
     interp_func = interp1d(loss_array, distance_array, bounds_error=False, fill_value="extrapolate")
     radius = interp_func(map_loss)
     return radius
 
+
+radius_DL_walfish = find_radius(MAPL_DL, d_km_array, pl_walfish)
+radius_UL_walfish = find_radius(MAPL_UL, d_km_array, pl_walfish)
+cell_radius_walfish = min(radius_DL_walfish, radius_UL_walfish)
+
+print(f"\nРадиус соты для Walfish-Ikegami: {cell_radius_walfish:.3f} км")
+
+
+plt.figure(2)
+
+heatmap = plt.contourf(X, Y, signal_strength, levels=20, cmap='RdYlBu_r')
+plt.colorbar(heatmap, label='Мощность сигнала, дБм')
+plt.scatter(0, 0, color='red', s=200, marker='^', label='Базовая станция', edgecolors='black')
+plt.contour(X, Y, R, levels=[cell_radius_walfish], colors='green', linewidths=2, linestyles='--')
+plt.xlabel('Расстояние по оси X, км')
+plt.ylabel('Расстояние по оси Y, км')
+plt.title('Тепловая карта распространения сигнала (Walfish-Ikegami)')
+plt.legend()
+plt.grid(True, alpha=0.3)
+plt.axis('equal')
+
+# Находим радиусы для сравнения
 radius_DL_cost = find_radius(MAPL_DL, d_km_array, pl_cost231)
 radius_UL_cost = find_radius(MAPL_UL, d_km_array, pl_cost231)
-
-radius_DL_umi = find_radius(MAPL_DL, d_m_array, pl_umi)
-radius_UL_umi = find_radius(MAPL_UL, d_m_array, pl_umi)
-
 cell_radius_cost = min(radius_DL_cost, radius_UL_cost)
-cell_radius_umi = min(radius_DL_umi, radius_UL_umi) / 1000
 
-print("\n" + "=" * 60)
-print("ОПРЕДЕЛЕНИЕ РАДИУСА СОТЫ")
-print("=" * 60)
-print("Для открытой территории (COST231 Hata):")
-print(f"  Радиус покрытия DL: {radius_DL_cost:.3f} км")
-print(f"  Радиус покрытия UL: {radius_UL_cost:.3f} км")
-print(f"  Финальный радиус соты: {cell_radius_cost:.3f} км")
-
-print("\nДля помещений (UMiNLOS):")
-print(f"  Радиус покрытия DL: {radius_DL_umi:.1f} м")
-print(f"  Радиус покрытия UL: {radius_UL_umi:.1f} м")
-print(f"  Финальный радиус соты: {cell_radius_umi:.3f} км")
-
-# 7. РАСЧЕТ ПЛОЩАДИ ПОКРЫТИЯ ОДНОЙ БС
-
-area_per_site_cost = 1.95 * (cell_radius_cost ** 2)
-area_per_site_umi = 1.95 * (cell_radius_umi ** 2)
-
-
-print("РАСЧЕТ ПЛОЩАДИ ПОКРЫТИЯ ОДНОЙ БС")
-
-print(f"Площадь покрытия одной БС (COST231, открытая территория): {area_per_site_cost:.6f} км²")
-print(f"Площадь покрытия одной БС (UMiNLOS, помещения): {area_per_site_umi:.6f} км²")
-
-# 8. ВЫЧИСЛЕНИЕ КОЛИЧЕСТВА БАЗОВЫХ СТАНЦИЙ
-
-num_sites_open = np.ceil(Area_open_territory_km2 / area_per_site_cost)  # шт.
-
-num_sites_indoor = np.ceil(Area_indoor_km2 / area_per_site_umi)  # шт.
-
-print("ВЫЧИСЛЕНИЕ КОЛИЧЕСТВА БАЗОВЫХ СТАНЦИЙ")
-
-print(f"Площадь открытой территории: {Area_open_territory_km2} км²")
-print(f"Площадь помещений: {Area_indoor_km2} км²")
-print(f"\nКоличество БС для открытой территории (COST231): {int(num_sites_open)} шт.")
-print(f"Количество БС для помещений (UMiNLOS): {int(num_sites_indoor)} шт.")
-print(f"Всего БС для двух территорий: {int(num_sites_open + num_sites_indoor)} шт.")
-
-plt.figure(figsize=(12, 8))
-plt.plot(d_km_array, pl_umi, 'b-', label='UMiNLOS модель (помещения)', linewidth=2)
-plt.plot(d_km_array, pl_cost231, 'r-', label='COST231 модель (открытая территория)', linewidth=2)
-
-plt.axhline(y=MAPL_UL, color='purple', linestyle='--', linewidth=2, label=f'MAPL_UL = {MAPL_UL:.1f} дБ')
-plt.axhline(y=MAPL_DL, color='orange', linestyle='--', linewidth=2, label=f'MAPL_DL = {MAPL_DL:.1f} дБ')
-
+plt.figure(3)
 plt.axvline(x=cell_radius_cost, color='red', linestyle=':', linewidth=2,
-            label=f'R_открытая = {cell_radius_cost:.2f} км')
-plt.axvline(x=cell_radius_umi, color='blue', linestyle=':', linewidth=2,
-            label=f'R_помещения = {cell_radius_umi:.3f} км')
+            label=f'R_COST231 = {cell_radius_cost:.2f} км')
+plt.axvline(x=cell_radius_walfish, color='magenta', linestyle=':', linewidth=2,
+            label=f'R_Walfish = {cell_radius_walfish:.2f} км')
 
-plt.xlabel('Расстояние, d (км)')
-plt.ylabel('Потери сигнала, PL (дБ)')
-plt.title('Определение радиуса соты для разных типов территории')
-plt.grid(True, alpha=0.3)
+plt.xlabel('Расстояние, км')
+plt.ylabel('Потери сигнала, дБ')
+plt.title('Сравнение COST231 и Walfish-Ikegami')
 plt.legend()
-plt.xlim(0, 6)
-plt.ylim(80, 180)
-plt.savefig('cell_radius_determination.png', dpi=300, bbox_inches='tight')
+plt.grid(True, alpha=0.3)
+plt.xlim(0, max(cell_radius_cost, cell_radius_walfish) * 1.5)
+
+plt.tight_layout()
 plt.show()
 
-print(f"Покрытие открытой территории {Area_open_territory_km2} км² требуется:")
-print(f"   {int(num_sites_open)} макросот (модель COST231)")
-print(f"   Радиус одной соты: {cell_radius_cost:.2f} км")
-print(f"   Площадь покрытия одной БС: {area_per_site_cost:.3f} км²")
-
-print(f"\nПокрытие помещений {Area_indoor_km2} км² требуется:")
-print(f"   {int(num_sites_indoor)} микросот (модель UMiNLOS)")
-print(f"   Радиус одной соты: {cell_radius_umi:.3f} км ({cell_radius_umi*1000:.1f} м)")
-print(f"   Площадь покрытия одной БС: {area_per_site_umi:.4f} км²")
-
-print(f"Общее количество БС для двух территорий: {int(num_sites_open + num_sites_indoor)} шт.")

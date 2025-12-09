@@ -110,19 +110,19 @@ def path_loss_cost231_hata(d_km, f_MHz, h_BS, h_UE, area_type):
 
 
 def path_loss_walfish_ikegami(d_km, f_MHz, h_BS, h_UE, h_roof, w_street=20, phi=90, b=30):
-    """
-    Модель Walfish-Ikegami для городской среды
-    """
+
     d_m = d_km * 1000
     f = f_MHz
 
-    # Свободное пространство
-    L0 = 32.4 + 20 * np.log10(d_m) + 20 * np.log10(f)
+    L0 = 32.44 + 20 * np.log10(f) + 20 * np.log10(d_m)
 
-    # Параметры для NLOS
-    if phi <= 35:
+    if d_m <= 100 and h_BS > h_roof + 5:
+        L_los = 42.6 + 26 * np.log10(d_m) + 20 * np.log10(f/1000)
+        return L_los
+
+    if 0 <= phi < 35:
         Lori = 0
-    elif phi <= 55:
+    elif 35 <= phi < 55:
         Lori = 2.5 + 0.075 * (phi - 35)
     else:
         Lori = 4.0 - 0.114 * (phi - 55)
@@ -135,12 +135,18 @@ def path_loss_walfish_ikegami(d_km, f_MHz, h_BS, h_UE, h_roof, w_street=20, phi=
         ka = 54
         kd = 18
     else:
-        Lbsh = -18 * np.log10(1 + (h_BS - h_roof))
-        if d_m >= 500:
-            ka = 54 - 0.8 * (h_BS - h_roof)
+        delta_h = h_roof - h_BS
+        if delta_h > 0:
+            Lbsh = -18 * np.log10(1 + (h_BS - h_roof))
+            if d_m >= 500:
+                ka = 54 - 0.8 * (h_BS - h_roof)
+            else:
+                ka = 54 - 1.6 * (h_BS - h_roof) * d_m / 1000
+            kd = 18 - 15 * (h_BS - h_roof) / h_roof
         else:
-            ka = 54 - 1.6 * (h_BS - h_roof) * d_m / 1000
-        kd = 18 - 15 * (h_BS - h_roof) / h_roof
+            Lbsh = 0
+            ka = 54
+            kd = 18
 
     if f >= 1500:
         kf = -4 + 0.7 * (f / 925 - 1)
@@ -149,15 +155,11 @@ def path_loss_walfish_ikegami(d_km, f_MHz, h_BS, h_UE, h_roof, w_street=20, phi=
 
     Lmsd = Lbsh + ka + kd * np.log10(d_m) + kf * np.log10(f) - 9 * np.log10(b)
 
-    if h_BS > h_roof and d_m > 500:
-        L = L0
-    else:
-        L = L0 + Lrts + Lmsd
+    L_total = L0 + Lrts + Lmsd
 
-    return L
+    return L_total
 
 
-# Расчет потерь
 d_km_array = np.linspace(0.01, 10, 500)
 d_m_array = d_km_array * 1000
 
@@ -166,9 +168,9 @@ pl_umi = path_loss_umi_nlos(d_m_array, f_GHz)
 pl_cost231 = np.array([path_loss_cost231_hata(d, f_MHz, h_BS, h_UE, area_type) for d in d_km_array])
 pl_walfish = np.array([path_loss_walfish_ikegami(d, f_MHz, h_BS, h_UE, h_roof, w_street, phi, b) for d in d_km_array])
 
-# 5. ПОСТРОЕНИЕ ГРАФИКА С ДОБАВЛЕНИЕМ WALFISH-IKEGAMI
+# 5. ПОСТРОЕНИЕ ГРАФИКА
 
-plt.figure(figsize=(12, 8))
+plt.figure(1)
 plt.plot(d_km_array, pl_fspl, 'g--', label='Free Space (FSPL)', linewidth=1.5)
 plt.plot(d_km_array, pl_umi, 'b-', label=f'UMiNLOS (f={f_GHz}ГГц)', linewidth=2)
 plt.plot(d_km_array, pl_cost231, 'r-', label=f'COST 231 Hata (Urban, hBS={h_BS}м)', linewidth=2)
@@ -191,25 +193,28 @@ print("График с моделью Walfish-Ikegami сохранен как 'p
 
 # 6. ТЕПЛОВАЯ КАРТА РАСПРОСТРАНЕНИЯ СИГНАЛА ДЛЯ WALFISH-IKEGAMI
 
-# Создаем сетку для тепловой карты
-x = np.linspace(-5, 5, 200)  # км по оси X
-y = np.linspace(-5, 5, 200)  # км по оси Y
+max_radius_km = 6.0
+
+x = np.linspace(-max_radius_km, max_radius_km, 200)
+y = np.linspace(-max_radius_km, max_radius_km, 200)
 X, Y = np.meshgrid(x, y)
 
-# Расстояние от центра (базовой станции)
 R = np.sqrt(X ** 2 + Y ** 2)
 
-# Рассчитываем мощность сигнала для каждой точки
+EIRP = TxPowerBS - FeederLoss + AntGainBS + MIMOGain
+
+
+
 signal_strength = np.zeros_like(R)
 for i in range(len(x)):
     for j in range(len(y)):
         distance_km = R[j, i]
         if distance_km > 0:
             pl = path_loss_walfish_ikegami(distance_km, f_MHz, h_BS, h_UE, h_roof, w_street, phi, b)
-            rx_power = TxPowerBS - pl - FeederLoss + AntGainBS + MIMOGain - PenetrationM
+            rx_power = EIRP - pl
             signal_strength[j, i] = rx_power
         else:
-            signal_strength[j, i] = TxPowerBS
+            signal_strength[j, i] = EIRP
 
 
 # Находим радиус покрытия для Walfish-Ikegami
@@ -228,9 +233,9 @@ print(f"\nРадиус соты для Walfish-Ikegami: {cell_radius_walfish:.3f
 
 plt.figure(2)
 
-heatmap = plt.contourf(X, Y, signal_strength, levels=20, cmap='RdYlBu_r')
+heatmap = plt.contourf(X, Y, signal_strength, levels=30, cmap='RdYlBu_r')
 plt.colorbar(heatmap, label='Мощность сигнала, дБм')
-plt.scatter(0, 0, color='red', s=200, marker='^', label='Базовая станция', edgecolors='black')
+plt.scatter(0, 0, color='red', s=200, label='Базовая станция', edgecolors='black')
 plt.contour(X, Y, R, levels=[cell_radius_walfish], colors='green', linewidths=2, linestyles='--')
 plt.xlabel('Расстояние по оси X, км')
 plt.ylabel('Расстояние по оси Y, км')
@@ -239,7 +244,6 @@ plt.legend()
 plt.grid(True, alpha=0.3)
 plt.axis('equal')
 
-# Находим радиусы для сравнения
 radius_DL_cost = find_radius(MAPL_DL, d_km_array, pl_cost231)
 radius_UL_cost = find_radius(MAPL_UL, d_km_array, pl_cost231)
 cell_radius_cost = min(radius_DL_cost, radius_UL_cost)

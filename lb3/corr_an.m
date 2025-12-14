@@ -1,0 +1,112 @@
+lengths = 200:200:2000;
+num_runs = 100;
+times_custom = zeros(length(lengths), 1);
+times_builtin = zeros(length(lengths), 1);
+
+fprintf('Длина\tСамописная (мс)\tВстроенная (мс)\tУскорение\n');
+fprintf('--------------------------------------------------------\n');
+
+for i = 1:length(lengths)
+    N = lengths(i);
+    
+    x = randn(N, 1);
+    y = randn(N, 1);
+    
+    custom_times = zeros(num_runs, 1);
+    for r = 1:num_runs
+        tic;
+        result_custom = norm_corr_custom(x, y);
+        custom_times(r) = toc * 1000;
+    end
+    times_custom(i) = mean(custom_times);
+    
+    builtin_times = zeros(num_runs, 1);
+    for r = 1:num_runs
+        tic;
+        result_builtin = xcorr(x, y, 0, 'normalized');
+        builtin_times(r) = toc * 1000;
+    end
+    times_builtin(i) = mean(builtin_times);
+    
+    last_custom = result_custom;
+    last_builtin = result_builtin;
+    
+    if abs(last_custom - last_builtin) > 1e-10
+        warning('Разница в результатах для N=%d: %e', N, abs(last_custom - last_builtin));
+    end
+    
+    speedup = times_builtin(i) / times_custom(i);
+    fprintf('%d\t%.4f\t\t%.4f\t\t%.2fx\n', ...
+        N, times_custom(i), times_builtin(i), speedup);
+end
+
+results = table(lengths', times_custom, times_builtin, ...
+    'VariableNames', {'Length', 'Custom_Time_ms', 'Builtin_Time_ms'});
+if exist('performance_results.csv', 'file')
+    delete('performance_results.csv');
+end
+writetable(results, 'performance_results.csv');
+
+figure('Position', [100, 100, 1200, 500]);
+
+subplot(1,2,1);
+plot(lengths, times_custom, 'b-o', 'LineWidth', 2, 'MarkerSize', 8);
+hold on;
+plot(lengths, times_builtin, 'r-s', 'LineWidth', 2, 'MarkerSize', 8);
+xlabel('Длина последовательности', 'FontSize', 12);
+ylabel('Время выполнения (мс)', 'FontSize', 12);
+title('Сравнение времени выполнения', 'FontSize', 14);
+legend({'Самописная', 'Встроенная (xcorr)'}, 'FontSize', 11, 'Location', 'northwest');
+grid on;
+
+subplot(1,2,2);
+speedup = times_builtin ./ times_custom; 
+bar(lengths, speedup, 'FaceColor', [0.3, 0.7, 0.3]);
+xlabel('Длина последовательности', 'FontSize', 12);
+ylabel('Коэффициент ускорения', 'FontSize', 12);
+title('Во сколько раз функция быстрее', 'FontSize', 14);
+grid on;
+
+if max(speedup) > 0
+    y_max = max(speedup) * 1.1;
+    ylim([0, y_max]);
+else
+    ylim([0, 1]);
+end
+
+for i = 1:length(lengths)
+    text(lengths(i), speedup(i) + 0.02*max(speedup), ...
+        sprintf('%.1fx', speedup(i)), ...
+        'HorizontalAlignment', 'center', 'FontSize', 10);
+end
+
+saveas(gcf, 'performance_comparison.png');
+
+fprintf('\nАнализ вычислительной сложности\n');
+fprintf('Для N = %d:\n', lengths(end));
+
+N = lengths(end);
+
+fprintf('Самописная функция выполняет:\n');
+fprintf('1. %d операций умножения (a.*b)\n', N);
+fprintf('2. %d операций сложения (sum)\n', N-1);
+fprintf('3. %d операций возведения в квадрат (a.^2, b.^2)\n', 2*N);
+fprintf('4. 2 операции извлечения квадратного корня\n');
+fprintf('5. 1 операция деления\n');
+fprintf('Итого: ~%d операций с плавающей точкой\n', 3*N + 3);
+fprintf('Вычислительная сложность: O(N)\n');
+
+function corr = norm_corr_custom(a, b)
+    if length(a) ~= length(b)
+        error('Vectors must be same size');
+    end
+    norm_coef = sqrt(sum(a.^2)) * sqrt(sum(b.^2));
+    corr = sum(a .* b) / norm_coef;
+end
+
+function corr = unnorm_corr_custom(a, b)
+    if length(a) ~= length(b)
+        error('Vectors must be same size');
+    end
+    corr = sum(a .* b);
+end

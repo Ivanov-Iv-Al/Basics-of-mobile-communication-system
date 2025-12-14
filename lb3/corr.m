@@ -1,78 +1,158 @@
-a = [6, 2, 3, -2, -4, -4, 1, 1];
-b = [3, 1, 5, 0, -3, -4, 2, 3];
-c = [-1, -1, 3, -9, 2, -8, 4, -4];
+n = 10;  
 
-fprintf('Ненормированная корреляция:\n');
-fprintf('     a      b      c\n');
-fprintf('a  %5d  %5d  %5d\n', ...
-    unnorm_corr(a,a), unnorm_corr(a,b), unnorm_corr(a,c));
-fprintf('b  %5d  %5d  %5d\n', ...
-    unnorm_corr(b,a), unnorm_corr(b,b), unnorm_corr(b,c));
-fprintf('c  %5d  %5d  %5d\n', ...
-    unnorm_corr(c,a), unnorm_corr(c,b), unnorm_corr(c,c));
-
-fprintf('\nНормированная корреляция:\n');
-fprintf('     a      b      c\n');
-fprintf('a  %5.2f  %5.2f  %5.2f\n', ...
-    norm_corr(a,a), norm_corr(a,b), norm_corr(a,c));
-fprintf('b  %5.2f  %5.2f  %5.2f\n', ...
-    norm_corr(b,a), norm_corr(b,b), norm_corr(b,c));
-fprintf('c  %5.2f  %5.2f  %5.2f\n', ...
-    norm_corr(c,a), norm_corr(c,b), norm_corr(c,c));
-
-num_in_journal = 10;
-f1 = num_in_journal;
-f2 = num_in_journal + 4;
-f3 = num_in_journal * 2 + 1;
+f1 = n;
+f2 = n + 4;
+f3 = n * 2 + 1;
 
 s1 = @(t) cos(2 * pi * f1 * t);
 s2 = @(t) cos(2 * pi * f2 * t);
 s3 = @(t) cos(2 * pi * f3 * t);
 
-a_signal = @(t) 5 * s1(t) + 4 * s2(t) + s3(t);
-b_signal = @(t) 3 * s1(t) + s3(t);
+a = @(t) 5 * s1(t) + 4 * s2(t) + s3(t);
+b = @(t) 3 * s1(t) + s3(t);
 
-Fs = 1000; 
-t = 0:1/Fs:10; 
-a_discrete = a_signal(t);
-b_discrete = b_signal(t);
+time = 0:0.001:10;
 
-unnorm_result = unnorm_corr(a_discrete, b_discrete);
-norm_result = norm_corr(a_discrete, b_discrete);
+a_y = a(time);
+b_y = b(time);
 
-fprintf('Частоты: f1 = %d Гц, f2 = %d Гц, f3 = %d Гц\n', f1, f2, f3);
-fprintf('Ненормированная корреляция: %.6f\n', unnorm_result);
-fprintf('Нормированная корреляция: %.6f\n', norm_result);
+fprintf("=== Корреляция непрерывных сигналов (вариант 10) ===\n");
+fprintf("Частоты: f1 = %d, f2 = %d, f3 = %d\n", f1, f2, f3);
+fprintf("Ненормированная корреляция: \t %f\n", unnorm_corr(a_y, b_y));
+fprintf("Нормированная корреляция: \t %f\n", norm_corr(a_y, b_y));
 
-figure('Position', [100, 100, 1200, 400]);
-subplot(1,2,1);
-plot(t(1:1000), a_discrete(1:1000), 'b-', 'LineWidth', 1.5);
+seq1 = [0.3, 0.2, -0.1, 4.2, -2, 1.5, 0];
+seq2 = [0.3, 4, -2.2, 1.6, 0.1, 0.1, 0.2];
+seq3 = [0, 0, 0, 1, 0, 0, -0.01];
+
+t = 0 : 1 : length(seq1) - 1;
+
+figure;
+subplot(3, 1, 1);
+plot(t, seq1, 'b-o', 'LineWidth', 1.5, 'MarkerSize', 6);
+xlabel("t, s");
+ylabel("A, v");
+title("Seq1 (ожидаемая синхропоследовательность)");
+grid on;
+
+subplot(3, 1, 2);
+plot(t, seq2, 'r-s', 'LineWidth', 1.5, 'MarkerSize', 6);
+xlabel("t, s");
+ylabel("A, v");
+title("Seq2 (принятый сигнал)");
+grid on;
+
+subplot(3, 1, 3);
+plot(t, seq3, 'g-d', 'LineWidth', 1.5, 'MarkerSize', 6);
+xlabel("t, s");
+ylabel("A, v");
+title("Seq3 (дополнительная последовательность)");
+grid on;
+
+fprintf("\nКорреляция между последовательностями\n");
+fprintf("Ненормированная корреляция seq1-seq2: \t %f\n", unnorm_corr(seq1, seq2));
+fprintf("Нормированная корреляция seq1-seq2: \t %f\n", norm_corr(seq1, seq2));
+fprintf("Ненормированная корреляция seq1-seq3: \t %f\n", unnorm_corr(seq1, seq3));
+fprintf("Нормированная корреляция seq1-seq3: \t %f\n", norm_corr(seq1, seq3));
+
+N = length(seq1);
+f1_corr_vals = zeros(N, 1);
+f2_corr_vals = zeros(N, 1);
+f3_corr_vals = zeros(N, 1);
+
+for k = 0:N-1
+    seq1_shift = circshift(seq1, k);
+    seq2_shift = circshift(seq2, k);
+    seq3_shift = circshift(seq3, k);
+    
+    f1_corr_vals(k+1) = norm_corr(seq1, seq1_shift);
+    f2_corr_vals(k+1) = norm_corr(seq2, seq2_shift);
+    f3_corr_vals(k+1) = norm_corr(seq3, seq3_shift);
+end
+
+figure;
+plot(0:N-1, f1_corr_vals, 'b-o', 'LineWidth', 2, 'MarkerSize', 8);
 hold on;
-plot(t(1:1000), b_discrete(1:1000), 'r--', 'LineWidth', 1.5);
+plot(0:N-1, f2_corr_vals, 'r-s', 'LineWidth', 2, 'MarkerSize', 8);
+plot(0:N-1, f3_corr_vals, 'g-d', 'LineWidth', 2, 'MarkerSize', 8);
+hold off;
+
+xlabel('Сдвиг, отсчеты');
+ylabel('Нормированная корреляция');
+title('Автокорреляция последовательностей при циклическом сдвиге');
+legend('Seq1', 'Seq2', 'Seq3', 'Location', 'best');
+grid on;
+
+% Поиск максимальной корреляции для синхронизации
+[max_corr_seq1, best_shift_seq1] = max(f1_corr_vals);
+[max_corr_seq2, best_shift_seq2] = max(f2_corr_vals);
+[max_corr_seq3, best_shift_seq3] = max(f3_corr_vals);
+
+fprintf("\n=== Результаты поиска максимальной автокорреляции ===\n");
+fprintf("Seq1: макс. корреляция = %.4f при сдвиге %d\n", max_corr_seq1, best_shift_seq1-1);
+fprintf("Seq2: макс. корреляция = %.4f при сдвиге %d\n", max_corr_seq2, best_shift_seq2-1);
+fprintf("Seq3: макс. корреляция = %.4f при сдвиге %d\n", max_corr_seq3, best_shift_seq3-1);
+
+% Визуализация синхронизации (пример для seq1)
+figure;
+subplot(2,1,1);
+plot(t, seq1, 'b-o', 'LineWidth', 2, 'MarkerSize', 8);
 xlabel('Время, с');
 ylabel('Амплитуда');
-title('Сигналы a(t) и b(t) (первые 1000 отсчетов)');
-legend('a(t) = 5s1+4s2+s3', 'b(t) = 3s1+s3');
+title('Ожидаемая синхропоследовательность (Seq1)');
 grid on;
 
-subplot(1,2,2);
-plot(a_discrete(1:100), b_discrete(1:100), 'ko', 'MarkerSize', 6);
-xlabel('a(t)');
-ylabel('b(t)');
-title('Фазовый портрет (первые 100 отсчетов)');
+subplot(2,1,2);
+seq2_synchronized = circshift(seq2, best_shift_seq2-1);
+plot(t, seq2_synchronized, 'r-s', 'LineWidth', 2, 'MarkerSize', 8);
+xlabel('Время, с');
+ylabel('Амплитуда');
+title(sprintf('Принятый сигнал (Seq2) после синхронизации (сдвиг %d)', best_shift_seq2-1));
 grid on;
+
+fprintf("\nВзаимная корреляция сигналов a и b при разных сдвигах\n");
+M = min(length(a_y), 100);  
+a_short = a_y(1:M);
+b_short = b_y(1:M);
+
+corr_vals_ab = zeros(M, 1);
+for k = 1:M
+    b_shifted = circshift(b_short, k);
+    corr_vals_ab(k) = norm_corr(a_short, b_shifted);
+end
+
+figure;
+plot(1:M, corr_vals_ab, 'm-', 'LineWidth', 2);
+xlabel('Сдвиг, отсчеты');
+ylabel('Нормированная корреляция');
+title('Взаимная корреляция сигналов a и b при циклическом сдвиге');
+grid on;
+
+[max_corr_ab, best_shift_ab] = max(corr_vals_ab);
+fprintf("Максимальная взаимная корреляция a и b: %.4f при сдвиге %d\n", max_corr_ab, best_shift_ab);
 
 function corr = norm_corr(a, b)
     if length(a) ~= length(b)
-        error('Vectors must be same size');
+        disp("Vectors must be same size");
+        corr = NaN;
+        return;
     end
+    
     norm_coef = sqrt(sum(a.^2)) * sqrt(sum(b.^2));
-    corr = sum(a .* b) / norm_coef;
+    if norm_coef == 0
+        corr = 0;
+    else
+        corr_vals = unnorm_corr(a, b);
+        corr = corr_vals / norm_coef;
+    end
 end
 
 function corr = unnorm_corr(a, b)
     if length(a) ~= length(b)
-        error('Vectors must be same size');
+        disp("Vectors must be same size");
+        corr = NaN;
+        return;
     end
+    
     corr = sum(a .* b);
 end

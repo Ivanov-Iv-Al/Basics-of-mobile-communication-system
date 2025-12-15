@@ -11,6 +11,7 @@ double corr(std::vector<int>& a, std::vector<int>& b) {
     for (int i = 0; i < a.size(); ++i) {
         result += a[i] * b[i];
     }
+    
     return result;
 }
 
@@ -33,15 +34,22 @@ int main() {
     std::vector<int> c = {-1, -1, 3, -9, 2, -8, 4, -4};
     
     std::vector<std::vector<int>> all_vec = {a, b, c};
-    std::vector<char> letters = {'a', 'b', 'c'};
+    std::vector<char> ls = {'a', 'b', 'c'};
     
     printf("   Ненормированная корреляция\n");
     printf("\t a \t b \t c\n");
     printf("-----------------------------\n");
     for (int i = 0; i < 3; ++i) {
-        printf("%c\t", letters[i]);
+        printf("%c\t", ls[i]);
         for (int j = 0; j < 3; ++j) {
+            if (all_vec[i] != all_vec[j])
+            {
             printf("%.0f\t", corr(all_vec[i], all_vec[j]));
+            }
+            else
+            {
+                printf("\t");
+            }
         }
         printf("\n");
         printf("-----------------------------\n");
@@ -51,7 +59,7 @@ int main() {
     printf("\t a \t b \t c\n");
     printf("-----------------------------\n");
     for (int i = 0; i < 3; ++i) {
-        printf("%c\t", letters[i]);
+        printf("%c\t", ls[i]);
         for (int j = 0; j < 3; ++j) {
             printf("%.2f\t", norm_corr(all_vec[i], all_vec[j]));
         }

@@ -1,4 +1,4 @@
-lengths = 200:200:2000;
+lengths = 200:200:20000;
 num_runs = 100;
 times_custom = zeros(length(lengths), 1);
 times_builtin = zeros(length(lengths), 1);
@@ -9,9 +9,8 @@ fprintf('--------------------------------------------------------\n');
 for i = 1:length(lengths)
     N = lengths(i);
     
-    x = randn(N, 1) + 1i*randn(N, 1);
-    y = randn(N, 1) + 1i*randn(N, 1);
-
+    x = [1+2i; 3+4i];
+    y = [5+6i; 7+8i];
     
     custom_times = zeros(num_runs, 1);
     for r = 1:num_runs
@@ -24,7 +23,7 @@ for i = 1:length(lengths)
     builtin_times = zeros(num_runs, 1);
     for r = 1:num_runs
         tic;
-        result_builtin = xcorr(x, y,10,'normalized');
+        result_builtin = xcorr(x, y, 0, 'normalized');
         builtin_times(r) = toc * 1000;
     end
 
@@ -98,25 +97,29 @@ fprintf('5. 1 операция деления\n');
 fprintf('Итого: ~%d операций с плавающей точкой\n', 3*N + 3);
 fprintf('Вычислительная сложность: O(N)\n');
 
-function [c, lags] = norm_corr_custom(a, b)
-    a = a(:); b = b(:);
-    N = length(a);
-    lags = -(N-1):(N-1);
-    c = zeros(size(lags));
+function corr = norm_corr_custom(a, b)
+    if length(a) ~= length(b)
+        error('Vectors must be same size');
+    end
+
+    a = a(:); 
+    b = b(:);
 
     norm_coef = sqrt(sum(abs(a).^2) * sum(abs(b).^2));
 
-    for i = 1:length(lags)
-        lag = lags(i);
-        if lag < 0
-            a_part = a(1:end+lag);
-            b_part = b(1-lag:end);
-        else
-            a_part = a(1+lag:end);
-            b_part = b(1:end-lag);
-        end
-        c(i) = sum(a_part .* conj(b_part));
+    if norm_coef == 0
+        corr = 0;
+    else
+
+        unnorm_val = sum(a .* conj(b));
+        
+        corr = unnorm_val / norm_coef;
     end
-    c = c / norm_coef;
 end
 
+function corr = unnorm_corr_custom(a, b)
+    if length(a) ~= length(b)
+        error('Vectors must be same size');
+    end
+    corr = sum(a .* b);
+end

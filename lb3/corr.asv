@@ -19,16 +19,7 @@ b_y = b(time);
 s1_y = s1(time);
 
 unn_s1_a = unnorm_corr(s1_y, a_y);
-n_s1_a = norm_corr(s1_y,a_y);
-
-fprintf('Unnormal %.6f\n',unn_s1_a);
-fprintf('Nnormal %.6f\n',n_s1_a);
-
-unn_s1_b = unnorm_corr(s1_y, b_y);
-n_s1_b = norm_corr(s1_y,b_y);
-
-fprintf('Unnormal %.6f\n',unn_s1_b);
-fprintf('Nnormal %.6f\n',n_s1_b);
+n_s
 
 fprintf("Корреляция непрерывных сигналов\n");
 fprintf("Частоты: f1 = %d, f2 = %d, f3 = %d\n", f1, f2, f3);

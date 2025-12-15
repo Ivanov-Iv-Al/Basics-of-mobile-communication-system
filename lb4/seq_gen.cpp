@@ -3,11 +3,10 @@
 #include <bitset>
 #include <algorithm>
 
-const int INIT_NUM = 10;      // Порядковый номер в журнале
-const int BIT_WIDTH = 5;     // Разрядность чисел
-const int SEQ_LENGTH = 31;   // 2^5 - 1
+const int INIT_NUM = 10;      
+const int BIT_WIDTH = 5;     
+const int SEQ_LENGTH = 31;   
 
-// Вспомогательная функция для отображения последовательности
 void display_sequence(const std::vector<int>& seq) {
     for (int val : seq) {
         std::cout << val << " ";
@@ -54,7 +53,6 @@ std::vector<int> generate_m_sequence(int seed, const std::vector<int>& feedback_
     return output;
 }
 
-// Подсчет совпадающих битов
 int count_matches(const std::vector<int>& seq1, const std::vector<int>& seq2) {
     int match_count = 0;
     for (size_t i = 0; i < seq1.size(); ++i) {
@@ -63,7 +61,6 @@ int count_matches(const std::vector<int>& seq1, const std::vector<int>& seq2) {
     return match_count;
 }
 
-// Генерация последовательности Голда
 std::vector<int> generate_gold_sequence(const std::vector<int>& m_seq1, 
                                        const std::vector<int>& m_seq2) {
     std::vector<int> gold_seq(SEQ_LENGTH);

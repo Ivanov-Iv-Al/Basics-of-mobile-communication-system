@@ -66,6 +66,15 @@ fprintf('%d ', gold_seq2(1:20)');
 analyze_balance(gold_seq1, 'Последовательность Голда 1');
 analyze_balance(gold_seq2, 'Последовательность Голда 2');
 
+fprintf('\nПроверка PN-свойств:\n');
+fprintf('\nПоследовательность Голда 1:\n');
+check_pn_properties(gold_seq1);
+fprintf('\nПоследовательность Голда 2:\n');
+check_pn_properties(gold_seq2);
+fprintf('\nСлучайная последовательность:\n');
+random_seq = randi([0 1], 1, seq_len);
+check_pn_properties(random_seq);
+
 figure('Position', [100, 100, 800, 400]);
 
 subplot(1,2,1);
@@ -137,7 +146,7 @@ xlabel('Корреляция'); ylabel('Частота');
 legend('Gold Seq1', 'Gold Seq2');
 grid on;
 
-fprintf('Автокорреляция Gold Seq1 (сдвиг 0): %.4f\n', auto_corr_gold1(1));
+fprintf('\nАвтокорреляция Gold Seq1 (сдвиг 0): %.4f\n', auto_corr_gold1(1));
 fprintf('Автокорреляция Gold Seq2 (сдвиг 0): %.4f\n', auto_corr_gold2(1));
 fprintf('Взаимная корреляция (сдвиг 0): %.4f\n', cross_corr(1));
 min_auto1 = min(auto_corr_gold1(2:end));
@@ -243,4 +252,46 @@ function analyze_cycles(sequence, name)
         key_val = sorted_keys(k);
         fprintf('  Длина %d: %d циклов\n', key_val, cycle_counts(key_val));
     end
+end
+
+function check_pn_properties(seq)
+    N = length(seq);
+    
+    ones_count = sum(seq);
+    zeros_count = N - ones_count;
+    balance_diff = abs(ones_count - zeros_count);
+    
+    runs = [];
+    current_run = 1;
+    for i = 2:N
+        if seq(i) == seq(i-1)
+            current_run = current_run + 1;
+        else
+            runs = [runs, current_run];
+            current_run = 1;
+        end
+    end
+    runs = [runs, current_run];
+    
+    max_run = max(runs);
+    
+    seq_bipolar = 2*seq - 1;
+    autocorr_sidelobes = zeros(1, N-1);
+    for tau = 1:N-1
+        shifted_seq = circshift(seq_bipolar, tau);
+        autocorr_sidelobes(tau) = abs(sum(seq_bipolar .* shifted_seq) / N);
+    end
+    max_sidelobe = max(autocorr_sidelobes);
+    
+    balance_ok = balance_diff <= 1;
+    run_ok = max_run <= 5;
+    autocorr_ok = max_sidelobe <= 0.3;
+    
+    fprintf('  Баланс: %d единиц, %d нулей (разница: %d)\n', ones_count, zeros_count, balance_diff);
+    fprintf('  Макс.длина серии: %d\n', max_run);
+    fprintf('  Макс.бок.лепесток: %.4f\n', max_sidelobe);
+    fprintf('  Критерии: баланс(%d), серии(%d), автокорр(%d)\n', balance_ok, run_ok, autocorr_ok);
+    
+    is_pn = balance_ok && run_ok && autocorr_ok;
+    fprintf('  PN-статус: %s\n', string(is_pn));
 end

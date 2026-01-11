@@ -71,8 +71,9 @@ fprintf('\nПоследовательность Голда 1:\n');
 check_pn_properties(gold_seq1);
 fprintf('\nПоследовательность Голда 2:\n');
 check_pn_properties(gold_seq2);
-fprintf('\nСлучайная последовательность:\n');
+
 random_seq = randi([0 1], 1, seq_len);
+fprintf('\nСлучайная последовательность:\n');
 check_pn_properties(random_seq);
 
 figure('Position', [100, 100, 800, 400]);

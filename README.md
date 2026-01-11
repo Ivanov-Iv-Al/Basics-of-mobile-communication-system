@@ -1,1 +1,1 @@
-# Basics-of-mobile-communication-system
+This repository is dedicated to the subject "Fundamentals of Mobile Communication Systems." It features works that allow for the software modeling of mobile communication systems, in particular, using the powerful mathematical programming language Matlab.

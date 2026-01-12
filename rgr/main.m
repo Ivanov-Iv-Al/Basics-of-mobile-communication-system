@@ -146,6 +146,69 @@ legend({'Базовая', 'Удлиненные', 'Короткие'}, 'Location
 grid on;
 hold off;
 
+sigmas = 0.05:0.05:0.5;
+samp_factors = [5, 10, 20];
+num_trials = 50;
+max_corr_results = zeros(length(sigmas), length(samp_factors));
+
+for sigma_idx = 1:length(sigmas)
+    sigma = sigmas(sigma_idx);
+    
+    for samp_idx = 1:length(samp_factors)
+        current_samp_factor = samp_factors(samp_idx);
+        
+        ref_sync_samples = expand_bits(sync_sequence, current_samp_factor);
+        impulse_shape_current = ones(1, current_samp_factor);
+        ref_sync_signal = filter_signal(ref_sync_samples, impulse_shape_current);
+        
+        max_corr_values = zeros(num_trials, 1);
+        
+        for trial = 1:num_trials
+            test_signal_length = length(ref_sync_signal) * 2;
+            test_signal = zeros(test_signal_length, 1);
+            
+            insert_pos = randi([1, length(test_signal) - length(ref_sync_signal)]);
+            test_signal(insert_pos:insert_pos+length(ref_sync_signal)-1) = ref_sync_signal;
+            
+            noise = normrnd(0, sigma, size(test_signal));
+            noisy_signal = test_signal + noise;
+            
+            correlation = find_sync_position(noisy_signal, ref_sync_signal);
+            
+            [max_val, ~] = max(correlation);
+            max_corr_values(trial) = max_val;
+        end
+        
+        max_corr_results(sigma_idx, samp_idx) = mean(max_corr_values);
+    end
+end
+
+figure('Position', [100, 100, 900, 600]);
+colors = lines(length(samp_factors));
+hold on;
+
+for samp_idx = 1:length(samp_factors)
+    plot(sigmas, max_corr_results(:, samp_idx), ...
+         'LineWidth', 2.5, ...
+         'Marker', 'o', ...
+         'MarkerSize', 8, ...
+         'MarkerFaceColor', colors(samp_idx,:), ...
+         'DisplayName', sprintf('%d отсчетов/бит', samp_factors(samp_idx)));
+end
+
+xlabel('Дисперсия шума (σ)', 'FontSize', 12, 'FontWeight', 'bold');
+ylabel('Максимум корреляции', 'FontSize', 12, 'FontWeight', 'bold');
+title('Зависимость максимума корреляции от уровня шума для разной длительности символа', ...
+      'FontSize', 14, 'FontWeight', 'bold');
+legend('Location', 'best', 'FontSize', 11);
+grid on;
+box on;
+
+saveas(gcf, 'correlation_vs_sigma.png');
+fprintf('График зависимости сохранен как correlation_vs_sigma.png\n');
+
+hold off;
+
 function bin_data = string_to_binary(input_text)
     text_len = length(input_text);
     total_bits = text_len * 8;

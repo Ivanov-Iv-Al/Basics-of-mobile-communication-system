@@ -127,16 +127,16 @@ else
 end
 
 figure;
-[spectrum1, freq1] = compute_signal_spectrum(shaped_signal);
+[spectrum1, freq1] = compute_signal_spectrum(shaped_signal, samp_per_bit);
 plot(freq1, 10*log10(spectrum1), 'LineWidth', 1.5);
 hold on;
 
 long_symbols = filter_signal(expand_bits(complete_frame, samp_per_bit*2), ones(1, samp_per_bit*2));
-[spectrum2, freq2] = compute_signal_spectrum(long_symbols);
+[spectrum2, freq2] = compute_signal_spectrum(long_symbols, samp_per_bit*2);
 plot(freq2, 10*log10(spectrum2), 'LineWidth', 1.5);
 
 short_symbols = filter_signal(expand_bits(complete_frame, floor(samp_per_bit/2)), ones(1, floor(samp_per_bit/2)));
-[spectrum3, freq3] = compute_signal_spectrum(short_symbols);
+[spectrum3, freq3] = compute_signal_spectrum(short_symbols, floor(samp_per_bit/2));
 plot(freq3, 10*log10(spectrum3), 'LineWidth', 1.5);
 
 xlabel('Нормированная частота');
@@ -338,12 +338,13 @@ function text_out = binary_to_string(bit_array)
 end
 
 
-function [spectrum, freq] = compute_signal_spectrum(signal)
+function [spectrum, freq] = compute_signal_spectrum(signal, samp_per_bit)
     N = length(signal);
     window = hann(N);
     signal = signal .* window;
-    fft_result = fft(signal);
-    spectrum = abs(fft_result(1:floor(N/2)+1)).^2;
-    Fs = 44100;
+    fft_result = fft(signal, N);
+    spectrum = abs(fft_result(1:floor(N/2)+1)).^2 / N;
+    Fs = 1000 * samp_per_bit;
     freq = (0:floor(N/2)) * Fs / N;
 end
+

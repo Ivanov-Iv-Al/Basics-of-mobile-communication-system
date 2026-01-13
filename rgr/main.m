@@ -2,7 +2,7 @@ jor_num = 10;
 char_bits = 8;
 samp_per_bit = 10;
 
-user_name = input("Введите ваше имя: ", "s");
+user_name = input("Мне нужно имя, тока на английском: ", "s");
 
 bin_seq = string_to_binary(user_name);
 
@@ -119,11 +119,11 @@ rx_check_bits = detected_bits(end-length(check_bits)+1:end);
 verify_check = calculate_check_sum(rx_message_bits, crc_poly);
 
 if isequal(verify_check, rx_check_bits)
-    fprintf('✓ Передача успешна, ошибок нет\n');
+    fprintf('Передача успешна, ошибок нет\n');
     recovered_text = binary_to_string(rx_message_bits);
     fprintf('Восстановленный текст: %s\n', recovered_text);
 else
-    fprintf('✗ Обнаружены ошибки передачи\n');
+    fprintf('Обнаружены ошибки передачи\n');
 end
 
 figure;
@@ -203,9 +203,6 @@ title('Зависимость максимума корреляции от ур�
 legend('Location', 'best', 'FontSize', 11);
 grid on;
 box on;
-
-saveas(gcf, 'correlation_vs_sigma.png');
-fprintf('График зависимости сохранен как correlation_vs_sigma.png\n');
 
 hold off;
 
@@ -340,9 +337,13 @@ function text_out = binary_to_string(bit_array)
     end
 end
 
+
 function [spectrum, freq] = compute_signal_spectrum(signal)
     N = length(signal);
+    window = hann(N);
+    signal = signal .* window;
     fft_result = fft(signal);
-    spectrum = abs(fft_result(1:floor(N/2)+1)).^2 / N;
-    freq = (0:floor(N/2)) / N;
+    spectrum = abs(fft_result(1:floor(N/2)+1)).^2;
+    Fs = 44100;
+    freq = (0:floor(N/2)) * Fs / N;
 end
